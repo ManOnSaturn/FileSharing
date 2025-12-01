@@ -52,6 +52,22 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc-mingw-w64-x86-64
+
+    - name: Configure Cargo for cross-compilation
+      if: matrix.target != 'x86_64-unknown-linux-gnu'
+      run: |
+        mkdir -p .cargo
+        if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+          cat > .cargo/config.toml << EOF
+        [target.aarch64-unknown-linux-gnu]
+        linker = "aarch64-linux-gnu-gcc"
+        EOF
+        elif [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
+          cat > .cargo/config.toml << EOF
+        [target.x86_64-pc-windows-gnu]
+        linker = "x86_64-w64-mingw32-gcc"
+        EOF
+        fi    
     
     - name: Build
       run: cargo build --release --target ${{ matrix.target }} --verbose
