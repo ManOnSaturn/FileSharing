@@ -18,7 +18,7 @@ pub fn send_file_to_server(addr: &str, filename: &str) -> std::io::Result<()> {
     // Open and send file
     let file = File::open(filename)?;
     let file_size = file.metadata()?.len();
-    let mut reader = BufReader::new(file);
+    let mut file_reader = BufReader::new(file);
 
     // Send file size
     stream.write_all(&file_size.to_be_bytes())?;
@@ -26,7 +26,7 @@ pub fn send_file_to_server(addr: &str, filename: &str) -> std::io::Result<()> {
     // Send file data
     let mut buffer = [0u8; BUFFER_SIZE];
     loop {
-        let n = reader.read(&mut buffer)?;
+        let n = file_reader.read(&mut buffer)?;
         if n == 0 {
             break;
         }
