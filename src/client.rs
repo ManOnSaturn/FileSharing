@@ -1,6 +1,9 @@
-use crate::BUFFER_SIZE;
+use crate::shared;
+use crate::shared::BUFFER_SIZE;
+use crate::shared::{join_received_file_handle, FileData};
+use std::borrow::Cow;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::net::TcpStream;
 
 pub fn send_file_to_server(addr: &str, filename: &str) -> std::io::Result<()> {
@@ -71,8 +74,7 @@ pub fn get_file_from_server(addr: &str, filename: &str) -> std::io::Result<()> {
     println!("Receiving file: {} ({} bytes)", filename, file_size);
 
     // Create file
-    let file = File::create(format!("downloaded_{}", filename))?;
-    let mut writer = BufWriter::new(file);
+    let (tx_to_file, handle) = shared::create_file_writer(Cow::Borrowed(filename));
 
     // Receive file data
     let mut remaining = file_size;
@@ -88,12 +90,19 @@ pub fn get_file_from_server(addr: &str, filename: &str) -> std::io::Result<()> {
                 "connection was closed before all data was read".to_string(),
             ));
         }
-        writer.write_all(&buffer[..n])?;
+        let result = tx_to_file.send(FileData {
+            data: buffer,
+            actual_buffer_size: n,
+        });
+        if result.is_err() {
+            return Ok(()); // TODO handle error here
+        }
         remaining -= n as u64;
     }
 
-    writer.flush()?;
-    println!("File downloaded successfully!");
+    drop(tx_to_file);
+
+    join_received_file_handle(handle);
 
     Ok(())
 }

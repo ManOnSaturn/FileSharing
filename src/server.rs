@@ -1,11 +1,10 @@
-use crate::BUFFER_SIZE;
-use std::borrow::Cow;
+use crate::shared;
+use crate::shared::BUFFER_SIZE;
+use crate::shared::{create_file_writer, FileData};
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
-use std::sync::mpsc::Sender;
-use std::thread::JoinHandle;
 
 fn receive_file(stream: &mut TcpStream) -> std::io::Result<()> {
     // Read filename length
@@ -26,7 +25,7 @@ fn receive_file(stream: &mut TcpStream) -> std::io::Result<()> {
     println!("Receiving file: {} ({} bytes)", filename, file_size);
 
     // Create file
-    let (tx, handle) = create_file(filename);
+    let (tx_to_file, handle) = create_file_writer(filename);
 
     // Receive file data
     let mut remaining = file_size;
@@ -35,7 +34,7 @@ fn receive_file(stream: &mut TcpStream) -> std::io::Result<()> {
     while remaining > 0 {
         let to_read = std::cmp::min(remaining as usize, BUFFER_SIZE);
         let n = stream.read(&mut buffer[..to_read])?;
-        let result = tx.send(FileData {
+        let result = tx_to_file.send(FileData {
             data: buffer,
             actual_buffer_size: n,
         });
@@ -45,41 +44,14 @@ fn receive_file(stream: &mut TcpStream) -> std::io::Result<()> {
         remaining -= n as u64;
     }
 
-    drop(tx);
+    drop(tx_to_file);
 
-    match handle.join() {
-        Ok(Ok(())) => println!("File received successfully!"),
-        Ok(Err(e)) => println!("IO error: {}", e),
-        Err(_) => println!("Thread panicked"),
-    }
+    shared::join_received_file_handle(handle);
 
     // Send acknowledgment
     stream.write_all(b"OK")?;
 
     Ok(())
-}
-
-struct FileData {
-    data: [u8; BUFFER_SIZE],
-    actual_buffer_size: usize,
-}
-
-fn create_file(filename: Cow<str>) -> (Sender<FileData>, JoinHandle<std::io::Result<()>>) {
-    let (tx, rx) = std::sync::mpsc::channel::<FileData>();
-    let filename = filename.into_owned();
-
-    // Spawn writer thread
-    let handle = std::thread::spawn(move || -> std::io::Result<()> {
-        let mut file = File::create(format!("received_{}", filename))?;
-
-        for file_data in rx {
-            file.write_all(&file_data.data[..file_data.actual_buffer_size])?;
-        }
-
-        file.flush()?;
-        Ok(())
-    });
-    (tx, handle)
 }
 
 fn send_file(stream: &mut TcpStream) -> std::io::Result<()> {
