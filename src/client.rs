@@ -81,6 +81,13 @@ pub fn get_file_from_server(addr: &str, filename: &str) -> std::io::Result<()> {
     while remaining > 0 {
         let to_read = std::cmp::min(remaining as usize, BUFFER_SIZE);
         let n = stream.read(&mut buffer[..to_read])?;
+        if n == 0 {
+            // Socket closed before all data was read
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "connection was closed before all data was read".to_string(),
+            ));
+        }
         writer.write_all(&buffer[..n])?;
         remaining -= n as u64;
     }
